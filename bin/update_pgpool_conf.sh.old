@@ -1,0 +1,59 @@
+#!/bin/bash
+###########################
+# Levente Simon
+
+KCONF=""
+NS=""
+TARGET="create"
+PASSWORD="insecure"
+
+ARGS=$(getopt -o f:n:u:p:t:h -- $@)
+eval set -- ${ARGS}
+
+while true; do
+  case $1 in
+    -f)
+     if [[ $(echo $2 | cut -d: -f1) == 'base64' ]]; then
+       export CONFIG_DATA=$(echo $2 | cut -d: -f2)
+       KCONF="--kubeconfig <(echo \$CONFIG_DATA | base64 --decode)"
+     else
+       KCONF="--kubeconfig=$2"
+     fi
+     shift 2;;
+    -n)
+     NS="-n $2"
+     shift 2;;
+    -u)
+     USER=$2
+     shift 2;;
+    -p)
+     PASSWORD=$2
+     shift 2;;
+    -t)
+     TARGET=$2
+     shift 2;;
+    -h)
+     echo "Usage: $(basename $0) -f <kube-config> -n <namespace> -u <user> -p <password> -t <target (create|destroy)>"
+     exit;;
+    --)
+     break;;
+  esac
+done
+
+case ${TARGET} in
+  create)
+    COMMAND="pg_md5 -m --config-file=/opt/bitnami/pgpool/conf/pgpool.conf -u ${USER} ${PASSWORD}" ;;
+  destroy)
+    COMMAND="sed -i /^${USER}:/d /opt/bitnami/pgpool/conf/pool_passwd" ;;
+  *)
+   echo "Unknown target"
+   exit ;;
+esac
+
+sleep 2
+POD=$(eval "kubectl ${KCONF} ${NS} get pods -l app.kubernetes.io/component=pgpool,app.kubernetes.io/name=postgresql-ha -o jsonpath='{.items[0].metadata.name}'"  2>/dev/null) 
+
+sleep 2
+#eval "kubectl ${KCONF} ${NS} exec -it ${POD} -- /bin/bash -c \"${COMMAND}\""
+eval "kubectl ${KCONF} ${NS} exec -it ${POD} -- ${COMMAND}"
+
